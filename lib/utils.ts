@@ -11,20 +11,82 @@ const THRESHOLD_PERCENTAGE = 40;
 
 // Extracts and returns the price from a list of possible elements.
 export function extractPrice(...elements: any) {
-  for (const element of elements) {
-    const priceText = element.text().trim();
+  try {
+    for (const element of elements) {
+      if (!element || typeof element.text !== 'function') continue;
+      
+      try {
+        const priceText = element.text().trim();
+        
+        // Safety check: limit string length to prevent stack overflow
+        if (!priceText || priceText.length > 1000) continue;
 
-    if(priceText) {
-      const cleanPrice = priceText.replace(/[^\d.]/g, '');
+        // Safe manual filtering (no regex replace to avoid stack overflow)
+        let cleanPrice = '';
+        try {
+          // Manual character filtering - safer than regex replace
+          const chars = priceText.split('');
+          const allowedChars: string[] = [];
+          for (let i = 0; i < Math.min(chars.length, 100); i++) {
+            const char = chars[i];
+            if ((char >= '0' && char <= '9') || char === '.') {
+              allowedChars.push(char);
+              if (allowedChars.length >= 50) break; // Limit length
+            }
+          }
+          cleanPrice = allowedChars.join('');
+        } catch (filterError) {
+          // Fallback: return empty if filtering fails
+          cleanPrice = '';
+        }
 
-      let firstPrice; 
-
-      if (cleanPrice) {
-        firstPrice = cleanPrice.match(/\d+\.\d{2}/)?.[0];
-      } 
-
-      return firstPrice || cleanPrice;
+        if (cleanPrice) {
+          // Manual parsing instead of regex match to avoid stack issues
+          // Find first decimal number pattern
+          let decimalMatch = '';
+          let currentNum = '';
+          let hasDecimal = false;
+          
+          for (let i = 0; i < cleanPrice.length && decimalMatch.length < 20; i++) {
+            const char = cleanPrice[i];
+            if (char >= '0' && char <= '9') {
+              currentNum += char;
+            } else if (char === '.' && currentNum.length > 0 && !hasDecimal) {
+              currentNum += char;
+              hasDecimal = true;
+            } else if (currentNum.length > 0) {
+              // End of number sequence
+              if (hasDecimal && currentNum.includes('.')) {
+                decimalMatch = currentNum;
+                break;
+              }
+              currentNum = '';
+              hasDecimal = false;
+            }
+          }
+          
+          if (decimalMatch) {
+            return decimalMatch;
+          }
+          
+          // Fallback: return current number sequence
+          if (currentNum) {
+            return currentNum;
+          }
+          
+          // Last resort: return first 10 characters if they're numbers
+          const firstNumbers = cleanPrice.substring(0, 10);
+          if (firstNumbers) {
+            return firstNumbers;
+          }
+        }
+      } catch (elementError) {
+        // Continue to next element
+        continue;
+      }
     }
+  } catch (error) {
+    console.log('[extractPrice] Error:', error);
   }
 
   return '';
@@ -38,22 +100,43 @@ export function extractCurrency(element: any) {
 
 // Extracts description from two possible elements from amazon
 export function extractDescription($: any) {
-  // these are possible elements holding description of the product
-  const selectors = [
-    ".a-unordered-list .a-list-item",
-    ".a-expander-content p",
-    // Add more selectors here if needed
-  ];
+  try {
+    // these are possible elements holding description of the product
+    const selectors = [
+      ".a-unordered-list .a-list-item",
+      ".a-expander-content p",
+      // Add more selectors here if needed
+    ];
 
-  for (const selector of selectors) {
-    const elements = $(selector);
-    if (elements.length > 0) {
-      const textContent = elements
-        .map((_: any, element: any) => $(element).text().trim())
-        .get()
-        .join("\n");
-      return textContent;
+    for (const selector of selectors) {
+      try {
+        const elements = $(selector);
+        if (elements && elements.length > 0) {
+          const textParts: string[] = [];
+          elements.each((index: number, element: any) => {
+            try {
+              if (index < 50) { // Limit to prevent infinite loops
+                const text = $(element).text().trim();
+                if (text && text.length > 0 && text.length < 10000) { // Sanity check
+                  textParts.push(text);
+                }
+              }
+            } catch (err) {
+              // Skip this element if there's an error
+            }
+          });
+          
+          if (textParts.length > 0) {
+            return textParts.join("\n").substring(0, 5000); // Limit total length
+          }
+        }
+      } catch (err) {
+        // Try next selector
+        continue;
+      }
     }
+  } catch (error) {
+    console.log('[extractDescription] Error:', error);
   }
 
   // If no matching elements were found, return an empty string

@@ -30,11 +30,11 @@ const Home = async ({ searchParams }: Props) => {
 
             <h1 className="head-text">
               Unleash the Power of
-              <span className="text-primary"> PriceWise</span>
+              <span className="text-primary"> TomScrape</span>
             </h1>
 
             <p className="mt-6">
-              Search stored products in the database. Background job continuously discovers and stores new products from Amazon.
+              Search and scrape products from Amazon by name. Background job continuously discovers and stores new products every 3 minutes.
             </p>
 
             <BackgroundJobStarter />

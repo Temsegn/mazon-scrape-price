@@ -17,7 +17,7 @@ async function runScrapingCycle() {
   isScrapingActive = true;
   try {
     console.log('[Background Scraper] Starting scraping cycle...');
-    const result = await runBackgroundScrapingJob(50);
+    const result = await runBackgroundScrapingJob(500); // Increased batch size for faster scraping
     console.log(`[Background Scraper] Cycle completed: ${result.message} - Stored ${result.count} products`);
   } catch (error: any) {
     console.error('[Background Scraper] Error in cycle:', error);
@@ -41,16 +41,16 @@ export async function GET() {
     // Run first cycle immediately (non-blocking)
     runScrapingCycle().catch(console.error);
 
-    // Set up interval to run every 10 minutes
+    // Set up interval to run every 3 minutes
     scrapingInterval = setInterval(() => {
       runScrapingCycle().catch(console.error);
-    }, 10 * 60 * 1000); // 10 minutes
+    }, 3 * 60 * 1000); // 3 minutes
 
-    console.log('[Background Scraper] Started infinite loop - will run every 10 minutes');
+    console.log('[Background Scraper] Started infinite loop - will run every 3 minutes');
 
     return NextResponse.json({
       success: true,
-      message: "Background scraper started. It will run every 10 minutes continuously.",
+      message: "Background scraper started. It will run every 3 minutes continuously.",
       running: true
     });
   } catch (error: any) {
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       // Set up interval
       scrapingInterval = setInterval(() => {
         runScrapingCycle().catch(console.error);
-      }, 10 * 60 * 1000);
+      }, 3 * 60 * 1000); // 3 minutes
 
       return NextResponse.json({
         success: true,

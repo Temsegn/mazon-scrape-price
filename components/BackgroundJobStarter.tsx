@@ -24,7 +24,7 @@ const BackgroundJobStarter = () => {
 
       if (data.success) {
         setStatus('running');
-        setMessage('✅ Background scraper is running! Discovering products every 10 minutes.');
+        setMessage('✅ Background scraper is running! Discovering products every 3 minutes.');
       } else {
         setStatus('stopped');
         setMessage('❌ Failed to start background scraper');
