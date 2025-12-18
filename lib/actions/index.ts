@@ -20,11 +20,16 @@ export async function scrapeAndStoreProduct(productUrl: string) {
 
     let product = scrapedProduct;
 
-    const existingProduct = await Product.findOne({ url: scrapedProduct.url });
+    const existingProduct = await Product.findOne({ url: scrapedProduct.url }).lean();
 
     if(existingProduct) {
+      // Limit priceHistory to prevent stack overflow (keep only last 100 entries)
+      const existingHistory = Array.isArray(existingProduct.priceHistory) 
+        ? existingProduct.priceHistory.slice(-100) 
+        : [];
+      
       const updatedPriceHistory: any = [
-        ...existingProduct.priceHistory,
+        ...existingHistory,
         { price: scrapedProduct.currentPrice }
       ]
 
@@ -40,10 +45,12 @@ export async function scrapeAndStoreProduct(productUrl: string) {
     const newProduct = await Product.findOneAndUpdate(
       { url: scrapedProduct.url },
       product,
-      { upsert: true, new: true }
+      { upsert: true, new: true, lean: true }
     );
 
-    revalidatePath(`/products/${newProduct._id}`);
+    if (newProduct && newProduct._id) {
+      revalidatePath(`/products/${newProduct._id}`);
+    }
   } catch (error: any) {
     throw new Error(`Failed to create/update product: ${error.message}`)
   }
@@ -53,13 +60,30 @@ export async function getProductById(productId: string) {
   try {
     connectToDB();
 
-    const product = await Product.findOne({ _id: productId });
+    const product = await Product.findOne({ _id: productId }).lean();
 
     if(!product) return null;
 
-    return product;
+    // Convert to plain object and limit priceHistory
+    const plainProduct = JSON.parse(JSON.stringify(product));
+    
+    // Limit priceHistory array size to prevent stack overflow
+    if (plainProduct.priceHistory && Array.isArray(plainProduct.priceHistory)) {
+      plainProduct.priceHistory = plainProduct.priceHistory.slice(-100); // Keep only last 100 entries
+    }
+    
+    // Ensure all string fields are limited in length
+    if (plainProduct.title && plainProduct.title.length > 500) {
+      plainProduct.title = plainProduct.title.substring(0, 500);
+    }
+    if (plainProduct.description && plainProduct.description.length > 2000) {
+      plainProduct.description = plainProduct.description.substring(0, 2000);
+    }
+
+    return plainProduct;
   } catch (error) {
-    console.log(error);
+    console.log('[getProductById] Error:', error);
+    return null;
   }
 }
 
@@ -67,11 +91,32 @@ export async function getAllProducts() {
   try {
     connectToDB();
 
-    const products = await Product.find();
+    const products = await Product.find().lean().limit(1000);
 
-    return products;
+    // Convert to plain objects and limit priceHistory to prevent stack overflow
+    const safeProducts = products.map((product: any) => {
+      const plainProduct = JSON.parse(JSON.stringify(product));
+      
+      // Limit priceHistory array size to prevent stack overflow
+      if (plainProduct.priceHistory && Array.isArray(plainProduct.priceHistory)) {
+        plainProduct.priceHistory = plainProduct.priceHistory.slice(-100); // Keep only last 100 entries
+      }
+      
+      // Ensure all string fields are limited in length
+      if (plainProduct.title && plainProduct.title.length > 500) {
+        plainProduct.title = plainProduct.title.substring(0, 500);
+      }
+      if (plainProduct.description && plainProduct.description.length > 2000) {
+        plainProduct.description = plainProduct.description.substring(0, 2000);
+      }
+      
+      return plainProduct;
+    });
+
+    return safeProducts;
   } catch (error) {
-    console.log(error);
+    console.log('[getAllProducts] Error:', error);
+    return [];
   }
 }
 
@@ -79,17 +124,38 @@ export async function getSimilarProducts(productId: string) {
   try {
     connectToDB();
 
-    const currentProduct = await Product.findById(productId);
+    const currentProduct = await Product.findById(productId).lean();
 
     if(!currentProduct) return null;
 
     const similarProducts = await Product.find({
       _id: { $ne: productId },
-    }).limit(3);
+    }).lean().limit(3);
 
-    return similarProducts;
+    // Convert to plain objects and limit priceHistory
+    const safeProducts = similarProducts.map((product: any) => {
+      const plainProduct = JSON.parse(JSON.stringify(product));
+      
+      // Limit priceHistory array size to prevent stack overflow
+      if (plainProduct.priceHistory && Array.isArray(plainProduct.priceHistory)) {
+        plainProduct.priceHistory = plainProduct.priceHistory.slice(-50); // Keep only last 50 entries
+      }
+      
+      // Ensure all string fields are limited in length
+      if (plainProduct.title && plainProduct.title.length > 500) {
+        plainProduct.title = plainProduct.title.substring(0, 500);
+      }
+      if (plainProduct.description && plainProduct.description.length > 2000) {
+        plainProduct.description = plainProduct.description.substring(0, 2000);
+      }
+      
+      return plainProduct;
+    });
+
+    return safeProducts;
   } catch (error) {
-    console.log(error);
+    console.log('[getSimilarProducts] Error:', error);
+    return [];
   }
 }
 
@@ -133,11 +199,11 @@ export async function searchAndStoreProducts(searchQuery: string, maxProducts: n
     console.log(`[Search] Found ${productUrls.length} product URLs, checking for duplicates...`);
 
     // Check which products already exist (by URL and ASIN)
-    const existingProducts = await Product.find({});
-    const existingUrls = new Set(existingProducts.map(p => p.url));
+    const existingProducts = await Product.find({}).lean().limit(10000);
+    const existingUrls = new Set(existingProducts.map((p: any) => p.url));
     const existingASINs = new Set<string>();
     
-    existingProducts.forEach(product => {
+    existingProducts.forEach((product: any) => {
       const asin = extractASINFromUrl(product.url);
       if (asin) {
         existingASINs.add(asin);
@@ -175,9 +241,9 @@ export async function searchAndStoreProducts(searchQuery: string, maxProducts: n
     const productsToUpdate: any[] = [];
     
     // Get all existing products for faster lookup
-    const allExisting = await Product.find({}, { url: 1, priceHistory: 1 });
+    const allExisting = await Product.find({}, { url: 1, priceHistory: 1 }).lean().limit(10000);
     const existingMap = new Map();
-    allExisting.forEach(p => {
+    allExisting.forEach((p: any) => {
       existingMap.set(p.url, p);
       const asin = extractASINFromUrl(p.url);
       if (asin) {
@@ -221,8 +287,13 @@ export async function searchAndStoreProducts(searchQuery: string, maxProducts: n
     // Update existing products
     for (const { scrapedProduct, existing } of productsToUpdate) {
       try {
+        // Limit priceHistory to prevent stack overflow (keep only last 100 entries)
+        const existingHistory = Array.isArray(existing.priceHistory) 
+          ? existing.priceHistory.slice(-100) 
+          : [];
+        
         const updatedPriceHistory: any = [
-          ...existing.priceHistory,
+          ...existingHistory,
           { price: scrapedProduct.currentPrice, date: new Date() }
         ]
 
@@ -266,35 +337,75 @@ export async function searchProducts(query: string) {
   try {
     connectToDB();
 
+    // Limit query length to prevent regex issues
+    const safeQuery = query.length > 100 ? query.substring(0, 100) : query;
+
     const products = await Product.find({
       $or: [
-        { title: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-        { category: { $regex: query, $options: 'i' } }
+        { title: { $regex: safeQuery, $options: 'i' } },
+        { description: { $regex: safeQuery, $options: 'i' } },
+        { category: { $regex: safeQuery, $options: 'i' } }
       ]
-    }).limit(50);
+    }).lean().limit(50);
 
-    return products;
+    // Convert to plain objects and limit priceHistory
+    const safeProducts = products.map((product: any) => {
+      const plainProduct = JSON.parse(JSON.stringify(product));
+      
+      // Limit priceHistory array size to prevent stack overflow
+      if (plainProduct.priceHistory && Array.isArray(plainProduct.priceHistory)) {
+        plainProduct.priceHistory = plainProduct.priceHistory.slice(-50); // Keep only last 50 entries
+      }
+      
+      // Ensure all string fields are limited in length
+      if (plainProduct.title && plainProduct.title.length > 500) {
+        plainProduct.title = plainProduct.title.substring(0, 500);
+      }
+      if (plainProduct.description && plainProduct.description.length > 2000) {
+        plainProduct.description = plainProduct.description.substring(0, 2000);
+      }
+      
+      return plainProduct;
+    });
+
+    return safeProducts;
   } catch (error) {
-    console.log(error);
+    console.log('[searchProducts] Error:', error);
     return [];
   }
 }
 
-// Extract ASIN from URL for better matching
+// Extract ASIN from URL for better matching (with safety limits)
 function extractASINFromUrl(url: string): string | null {
-  const patterns = [
-    /\/dp\/([A-Z0-9]{10})/,
-    /\/gp\/product\/([A-Z0-9]{10})/,
-    /\/product\/([A-Z0-9]{10})/,
-    /ASIN[\/=]([A-Z0-9]{10})/i
-  ];
+  if (!url || typeof url !== 'string') return null;
   
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
+  // Limit URL length to prevent regex issues
+  const safeUrl = url.length > 500 ? url.substring(0, 500) : url;
+  
+  try {
+    const patterns = [
+      /\/dp\/([A-Z0-9]{10})/,
+      /\/gp\/product\/([A-Z0-9]{10})/,
+      /\/product\/([A-Z0-9]{10})/,
+      /ASIN[\/=]([A-Z0-9]{10})/i
+    ];
+    
+    for (const pattern of patterns) {
+      try {
+        const match = safeUrl.match(pattern);
+        if (match && match[1] && match[1].length === 10) {
+          // Validate ASIN format
+          if (/^[A-Z0-9]{10}$/.test(match[1])) {
+            return match[1];
+          }
+        }
+      } catch (patternError) {
+        // Continue to next pattern
+        continue;
+      }
     }
+  } catch (error) {
+    console.log('[extractASINFromUrl] Error:', error);
   }
   return null;
 }
@@ -316,12 +427,12 @@ export async function runBackgroundScrapingJob(batchSize: number = 500) {
     console.log(`[Background Job] Found ${productUrls.length} product URLs`);
 
     // Get all existing URLs and ASINs from database for comparison
-    const existingProducts = await Product.find({});
-    const existingUrls = new Set(existingProducts.map(p => p.url));
+    const existingProducts = await Product.find({}).lean().limit(10000);
+    const existingUrls = new Set(existingProducts.map((p: any) => p.url));
     const existingASINs = new Set<string>();
     
     // Extract ASINs from existing products
-    existingProducts.forEach(product => {
+    existingProducts.forEach((product: any) => {
       const asin = extractASINFromUrl(product.url);
       if (asin) {
         existingASINs.add(asin);
@@ -366,11 +477,11 @@ export async function runBackgroundScrapingJob(batchSize: number = 500) {
     }
     
     // Get all existing URLs and ASINs in one query for faster checking
-    const allExistingProducts = await Product.find({}, { url: 1 });
-    const existingUrlsSet = new Set(allExistingProducts.map(p => p.url));
+    const allExistingProducts = await Product.find({}, { url: 1 }).lean().limit(10000);
+    const existingUrlsSet = new Set(allExistingProducts.map((p: any) => p.url));
     const existingASINsSet = new Set<string>();
     
-    allExistingProducts.forEach(product => {
+    allExistingProducts.forEach((product: any) => {
       const asin = extractASINFromUrl(product.url);
       if (asin) {
         existingASINsSet.add(asin);

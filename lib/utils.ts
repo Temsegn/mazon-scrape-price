@@ -144,32 +144,59 @@ export function extractDescription($: any) {
 }
 
 export function getHighestPrice(priceList: PriceHistoryItem[]) {
-  let highestPrice = priceList[0];
+  if (!priceList || !Array.isArray(priceList) || priceList.length === 0) {
+    return 0;
+  }
+  
+  // Limit array size to prevent stack overflow
+  const safeList = priceList.length > 1000 ? priceList.slice(-1000) : priceList;
+  
+  let highestPrice = safeList[0];
 
-  for (let i = 0; i < priceList.length; i++) {
-    if (priceList[i].price > highestPrice.price) {
-      highestPrice = priceList[i];
+  for (let i = 0; i < safeList.length; i++) {
+    if (safeList[i] && safeList[i].price && safeList[i].price > highestPrice.price) {
+      highestPrice = safeList[i];
     }
   }
 
-  return highestPrice.price;
+  return highestPrice.price || 0;
 }
 
 export function getLowestPrice(priceList: PriceHistoryItem[]) {
-  let lowestPrice = priceList[0];
+  if (!priceList || !Array.isArray(priceList) || priceList.length === 0) {
+    return 0;
+  }
+  
+  // Limit array size to prevent stack overflow
+  const safeList = priceList.length > 1000 ? priceList.slice(-1000) : priceList;
+  
+  let lowestPrice = safeList[0];
 
-  for (let i = 0; i < priceList.length; i++) {
-    if (priceList[i].price < lowestPrice.price) {
-      lowestPrice = priceList[i];
+  for (let i = 0; i < safeList.length; i++) {
+    if (safeList[i] && safeList[i].price && safeList[i].price < lowestPrice.price) {
+      lowestPrice = safeList[i];
     }
   }
 
-  return lowestPrice.price;
+  return lowestPrice.price || 0;
 }
 
 export function getAveragePrice(priceList: PriceHistoryItem[]) {
-  const sumOfPrices = priceList.reduce((acc, curr) => acc + curr.price, 0);
-  const averagePrice = sumOfPrices / priceList.length || 0;
+  if (!priceList || !Array.isArray(priceList) || priceList.length === 0) {
+    return 0;
+  }
+  
+  // Limit array size to prevent stack overflow
+  const safeList = priceList.length > 1000 ? priceList.slice(-1000) : priceList;
+  
+  const sumOfPrices = safeList.reduce((acc, curr) => {
+    if (curr && typeof curr.price === 'number' && !isNaN(curr.price)) {
+      return acc + curr.price;
+    }
+    return acc;
+  }, 0);
+  
+  const averagePrice = sumOfPrices / safeList.length || 0;
 
   return averagePrice;
 }
