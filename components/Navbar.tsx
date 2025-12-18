@@ -25,6 +25,9 @@ const Navbar = () => {
         </Link>
 
         <div className="flex items-center gap-5">
+          <Link href="/dashboard" className="text-sm font-medium text-gray-700 hover:text-primary transition-colors">
+            Dashboard
+          </Link>
           {navIcons.map((icon) => (
             <Image 
               key={icon.alt}

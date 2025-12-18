@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { getPriceAnalysis, getCategoryAnalysis, getGeneralAnalysis } from '@/lib/actions/analytics'
 import PriceAnalysisTab from '@/components/dashboard/PriceAnalysisTab'
 import CategoryAnalysisTab from '@/components/dashboard/CategoryAnalysisTab'
 import GeneralAnalysisTab from '@/components/dashboard/GeneralAnalysisTab'
@@ -22,11 +21,18 @@ export default function Dashboard() {
   const loadAllData = async () => {
     setLoading(true)
     try {
-      const [price, category, general] = await Promise.all([
-        getPriceAnalysis(),
-        getCategoryAnalysis(),
-        getGeneralAnalysis()
+      const [priceRes, categoryRes, generalRes] = await Promise.all([
+        fetch('/api/analytics/price'),
+        fetch('/api/analytics/category'),
+        fetch('/api/analytics/general')
       ])
+      
+      const [price, category, general] = await Promise.all([
+        priceRes.json(),
+        categoryRes.json(),
+        generalRes.json()
+      ])
+      
       setPriceData(price)
       setCategoryData(category)
       setGeneralData(general)

@@ -2,7 +2,6 @@
 
 import { connectToDB } from "../mongoose";
 import Product from "../models/product.model";
-import { Product as ProductType } from "@/types";
 
 export type PriceAnalysis = {
   totalProducts: number;
